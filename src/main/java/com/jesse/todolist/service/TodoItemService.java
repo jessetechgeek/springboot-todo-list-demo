@@ -78,6 +78,15 @@ public class TodoItemService {
 
     public void deleteTodoItem(Long userId, Long todoListId, Long todoItemId) {
         TodoItem todoItem = validateTodoItemAccess(userId, todoListId, todoItemId);
+        TodoList todoList = todoItem.getTodoList();
+        
+        // First remove the item from the parent list
+        if (todoList != null) {
+            todoList.removeTodoItem(todoItem);
+            todoListRepository.save(todoList);
+        }
+        
+        // Then delete the item
         todoItemRepository.delete(todoItem);
     }
 
