@@ -1,6 +1,7 @@
 package com.jesse.todolist.controller;
 
 import com.jesse.todolist.entity.User;
+import com.jesse.todolist.factory.UserFactory;
 import com.jesse.todolist.payload.request.LoginRequest;
 import com.jesse.todolist.payload.request.SignupRequest;
 import com.jesse.todolist.payload.response.ApiResponse;
@@ -19,7 +20,6 @@ import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 
@@ -32,17 +32,17 @@ public class AuthController {
 
     private final AuthenticationManager authenticationManager;
     private final UserRepository userRepository;
-    private final PasswordEncoder passwordEncoder;
     private final JwtTokenProvider tokenProvider;
+    private final UserFactory userFactory;
 
     public AuthController(AuthenticationManager authenticationManager,
                          UserRepository userRepository,
-                         PasswordEncoder passwordEncoder,
-                         JwtTokenProvider tokenProvider) {
+                         JwtTokenProvider tokenProvider,
+                         UserFactory userFactory) {
         this.authenticationManager = authenticationManager;
         this.userRepository = userRepository;
-        this.passwordEncoder = passwordEncoder;
         this.tokenProvider = tokenProvider;
+        this.userFactory = userFactory;
     }
 
     @PostMapping("/login")
@@ -77,15 +77,14 @@ public class AuthController {
                     HttpStatus.BAD_REQUEST);
         }
 
-        // Create user's account
-        User user = new User(
-                signUpRequest.getUsername(),
-                passwordEncoder.encode(signUpRequest.getPassword()),
-                signUpRequest.getEmail()
+        // Using the factory to create a User
+        User user = userFactory.createUser(
+            signUpRequest.getUsername(),
+            signUpRequest.getPassword(),
+            signUpRequest.getEmail(),
+            signUpRequest.getFirstName(),
+            signUpRequest.getLastName()
         );
-        
-        user.setFirstName(signUpRequest.getFirstName());
-        user.setLastName(signUpRequest.getLastName());
 
         User result = userRepository.save(user);
 

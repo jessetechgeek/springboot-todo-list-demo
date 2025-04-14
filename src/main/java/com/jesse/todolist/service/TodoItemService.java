@@ -1,8 +1,12 @@
 package com.jesse.todolist.service;
 
+import com.jesse.todolist.entity.DomainEvents;
 import com.jesse.todolist.entity.TodoItem;
 import com.jesse.todolist.entity.TodoList;
+import com.jesse.todolist.event.DomainEvent;
+import com.jesse.todolist.event.DomainEventPublisher;
 import com.jesse.todolist.exception.ResourceNotFoundException;
+import com.jesse.todolist.factory.TodoItemFactory;
 import com.jesse.todolist.payload.request.TodoItemRequest;
 import com.jesse.todolist.payload.response.TodoItemResponse;
 import com.jesse.todolist.repository.TodoItemRepository;
@@ -18,13 +22,19 @@ public class TodoItemService {
     private final TodoItemRepository todoItemRepository;
     private final TodoListRepository todoListRepository;
     private final TodoListService todoListService;
+    private final TodoItemFactory todoItemFactory;
+    private final DomainEventPublisher eventPublisher;
 
     public TodoItemService(TodoItemRepository todoItemRepository, 
                           TodoListRepository todoListRepository,
-                          TodoListService todoListService) {
+                          TodoListService todoListService,
+                          TodoItemFactory todoItemFactory,
+                          DomainEventPublisher eventPublisher) {
         this.todoItemRepository = todoItemRepository;
         this.todoListRepository = todoListRepository;
         this.todoListService = todoListService;
+        this.todoItemFactory = todoItemFactory;
+        this.eventPublisher = eventPublisher;
     }
 
     public List<TodoItemResponse> getAllTodoItemsByListId(Long userId, Long todoListId) {
@@ -52,27 +62,48 @@ public class TodoItemService {
             throw new RuntimeException("Access denied: User does not have permission for this todo list");
         }
         
-        TodoItem todoItem = new TodoItem(todoItemRequest.getTitle(), todoItemRequest.getDescription());
-        todoItem.setCompleted(todoItemRequest.isCompleted());
-        todoItem.setDueDate(todoItemRequest.getDueDate());
-        todoItem.setPriority(todoItemRequest.getPriority());
+        // Using the factory to create a TodoItem
+        TodoItem todoItem = todoItemFactory.createTodoItemInList(
+            todoItemRequest.getTitle(),
+            todoItemRequest.getDescription(),
+            todoItemRequest.getPriority(),
+            todoItemRequest.getDueDate(),
+            todoList
+        );
         
-        todoList.addTodoItem(todoItem);
+        if (todoItemRequest.isCompleted()) {
+            todoItem.markAsCompleted();
+        }
         
         TodoItem savedTodoItem = todoItemRepository.save(todoItem);
+        
+        // Process any domain events that might have been raised
+        processDomainEvents();
+        
         return new TodoItemResponse(savedTodoItem);
     }
 
     public TodoItemResponse updateTodoItem(Long userId, Long todoListId, Long todoItemId, TodoItemRequest todoItemRequest) {
         TodoItem todoItem = validateTodoItemAccess(userId, todoListId, todoItemId);
         
+        // Using domain methods to update the entity
         todoItem.setTitle(todoItemRequest.getTitle());
         todoItem.setDescription(todoItemRequest.getDescription());
-        todoItem.setCompleted(todoItemRequest.isCompleted());
+        
+        if (todoItemRequest.isCompleted()) {
+            todoItem.markAsCompleted();
+        } else {
+            todoItem.markAsIncomplete();
+        }
+        
         todoItem.setDueDate(todoItemRequest.getDueDate());
         todoItem.setPriority(todoItemRequest.getPriority());
         
         TodoItem updatedTodoItem = todoItemRepository.save(todoItem);
+        
+        // Process and publish any domain events that occurred
+        processDomainEvents();
+        
         return new TodoItemResponse(updatedTodoItem);
     }
 
@@ -80,7 +111,7 @@ public class TodoItemService {
         TodoItem todoItem = validateTodoItemAccess(userId, todoListId, todoItemId);
         TodoList todoList = todoItem.getTodoList();
         
-        // First remove the item from the parent list
+        // First remove the item from the parent list using domain method
         if (todoList != null) {
             todoList.removeTodoItem(todoItem);
             todoListRepository.save(todoList);
@@ -104,5 +135,12 @@ public class TodoItemService {
         }
         
         return todoItem;
+    }
+    
+    // Process and publish domain events
+    private void processDomainEvents() {
+        List<DomainEvent> events = DomainEvents.getEvents();
+        events.forEach(eventPublisher::publish);
+        DomainEvents.clear();
     }
 }

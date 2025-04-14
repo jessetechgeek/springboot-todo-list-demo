@@ -21,10 +21,11 @@ public class UserPrincipal implements UserDetails {
     }
 
     public static UserPrincipal create(User user) {
+        String email = (user.getEmail() != null) ? user.getEmail().getValue() : "";
         return new UserPrincipal(
                 user.getId(),
                 user.getUsername(),
-                user.getEmail(),
+                email,
                 user.getPassword()
         );
     }

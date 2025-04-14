@@ -3,6 +3,7 @@ package com.jesse.todolist.service;
 import com.jesse.todolist.entity.TodoList;
 import com.jesse.todolist.entity.User;
 import com.jesse.todolist.exception.ResourceNotFoundException;
+import com.jesse.todolist.factory.TodoListFactory;
 import com.jesse.todolist.payload.request.TodoListRequest;
 import com.jesse.todolist.payload.response.TodoListResponse;
 import com.jesse.todolist.repository.TodoListRepository;
@@ -17,10 +18,14 @@ public class TodoListService {
 
     private final TodoListRepository todoListRepository;
     private final UserRepository userRepository;
+    private final TodoListFactory todoListFactory;
 
-    public TodoListService(TodoListRepository todoListRepository, UserRepository userRepository) {
+    public TodoListService(TodoListRepository todoListRepository, 
+                          UserRepository userRepository,
+                          TodoListFactory todoListFactory) {
         this.todoListRepository = todoListRepository;
         this.userRepository = userRepository;
+        this.todoListFactory = todoListFactory;
     }
 
     public List<TodoListResponse> getAllTodoListsByUserId(Long userId) {
@@ -39,8 +44,12 @@ public class TodoListService {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new ResourceNotFoundException("User", "id", userId));
 
-        TodoList todoList = new TodoList(todoListRequest.getName(), todoListRequest.getDescription());
-        user.addTodoList(todoList);
+        // Using the factory to create a TodoList
+        TodoList todoList = todoListFactory.createTodoListForUser(
+            todoListRequest.getName(), 
+            todoListRequest.getDescription(), 
+            user
+        );
         
         TodoList savedTodoList = todoListRepository.save(todoList);
         return new TodoListResponse(savedTodoList);
@@ -49,6 +58,7 @@ public class TodoListService {
     public TodoListResponse updateTodoList(Long userId, Long todoListId, TodoListRequest todoListRequest) {
         TodoList todoList = validateTodoListAccess(userId, todoListId);
         
+        // Using domain methods to update the entity
         todoList.setName(todoListRequest.getName());
         todoList.setDescription(todoListRequest.getDescription());
         

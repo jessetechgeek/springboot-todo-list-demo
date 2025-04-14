@@ -1,8 +1,14 @@
 package com.jesse.todolist.entity;
 
+import com.jesse.todolist.event.TodoItemCompletedEvent;
 import jakarta.persistence.*;
 import java.time.LocalDateTime;
+import java.util.Objects;
 
+/**
+ * TodoItem represents a task within a TodoList.
+ * This is a DDD-style entity with proper encapsulation and validation.
+ */
 @Entity
 @Table(name = "todo_items")
 public class TodoItem {
@@ -35,95 +41,168 @@ public class TodoItem {
     @JoinColumn(name = "todo_list_id")
     private TodoList todoList;
 
-    // Constructors
-    public TodoItem() {
+    // Private constructor for JPA and Factory use only
+    protected TodoItem() {
         this.createdAt = LocalDateTime.now();
         this.updatedAt = LocalDateTime.now();
         this.completed = false;
         this.priority = TodoPriority.MEDIUM;
     }
 
-    public TodoItem(String title) {
+    // Private constructor with title
+    private TodoItem(String title) {
         this();
-        this.title = title;
+        setTitle(title); // Use setter for validation
     }
 
-    public TodoItem(String title, String description) {
+    // Private constructor with title and description
+    private TodoItem(String title, String description) {
         this(title);
         this.description = description;
     }
 
-    // Getters and Setters
+    // Getters
     public Long getId() {
         return id;
-    }
-
-    public void setId(Long id) {
-        this.id = id;
     }
 
     public String getTitle() {
         return title;
     }
 
-    public void setTitle(String title) {
-        this.title = title;
-    }
-
     public String getDescription() {
         return description;
-    }
-
-    public void setDescription(String description) {
-        this.description = description;
     }
 
     public boolean isCompleted() {
         return completed;
     }
 
-    public void setCompleted(boolean completed) {
-        this.completed = completed;
-    }
-
     public LocalDateTime getCreatedAt() {
         return createdAt;
-    }
-
-    public void setCreatedAt(LocalDateTime createdAt) {
-        this.createdAt = createdAt;
     }
 
     public LocalDateTime getUpdatedAt() {
         return updatedAt;
     }
 
-    public void setUpdatedAt(LocalDateTime updatedAt) {
-        this.updatedAt = updatedAt;
-    }
-
     public LocalDateTime getDueDate() {
         return dueDate;
-    }
-
-    public void setDueDate(LocalDateTime dueDate) {
-        this.dueDate = dueDate;
     }
 
     public TodoPriority getPriority() {
         return priority;
     }
 
-    public void setPriority(TodoPriority priority) {
-        this.priority = priority;
-    }
-
     public TodoList getTodoList() {
         return todoList;
     }
 
-    public void setTodoList(TodoList todoList) {
+    // Domain behavior and setters with validation
+    public void setTitle(String title) {
+        validateTitle(title);
+        this.title = title;
+        this.updatedAt = LocalDateTime.now();
+    }
+
+    public void setDescription(String description) {
+        this.description = description;
+        this.updatedAt = LocalDateTime.now();
+    }
+
+    public void markAsCompleted() {
+        // Only publish event if it's a state change
+        boolean wasAlreadyCompleted = this.completed;
+        this.completed = true;
+        this.updatedAt = LocalDateTime.now();
+        
+        // Event will be published by calling code, we just indicate the event should be raised
+        if (!wasAlreadyCompleted) {
+            // This will be used to trigger the event publisher in the service layer
+            DomainEvents.raise(new TodoItemCompletedEvent(this));
+        }
+    }
+
+    public void markAsIncomplete() {
+        this.completed = false;
+        this.updatedAt = LocalDateTime.now();
+    }
+
+    public void setDueDate(LocalDateTime dueDate) {
+        this.dueDate = dueDate;
+        this.updatedAt = LocalDateTime.now();
+    }
+
+    public void setPriority(TodoPriority priority) {
+        if (priority == null) {
+            this.priority = TodoPriority.MEDIUM; // Default
+        } else {
+            this.priority = priority;
+        }
+        this.updatedAt = LocalDateTime.now();
+    }
+
+    // Package-private setter for TodoList
+    void setTodoList(TodoList todoList) {
         this.todoList = todoList;
+    }
+
+    // Protected setter for ID (only used for persistence)
+    protected void setId(Long id) {
+        this.id = id;
+    }
+
+    // Domain validation
+    private void validateTitle(String title) {
+        if (title == null || title.trim().isEmpty()) {
+            throw new IllegalArgumentException("Todo item title cannot be empty");
+        }
+        if (title.length() > 255) {
+            throw new IllegalArgumentException("Todo item title cannot exceed 255 characters");
+        }
+    }
+
+    // Equals and hashCode based on identity (ID)
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (o == null || getClass() != o.getClass()) return false;
+        TodoItem todoItem = (TodoItem) o;
+        return id != null && Objects.equals(id, todoItem.id);
+    }
+
+    @Override
+    public int hashCode() {
+        return getClass().hashCode();
+    }
+
+    // For debugging purposes
+    @Override
+    public String toString() {
+        return "TodoItem{" +
+                "id=" + id +
+                ", title='" + title + '\'' +
+                ", completed=" + completed +
+                ", priority=" + priority +
+                '}';
+    }
+
+    // Factory methods for creation
+    public static class Factory {
+        public static TodoItem createTodoItem(String title) {
+            return new TodoItem(title);
+        }
+
+        public static TodoItem createTodoItem(String title, String description) {
+            return new TodoItem(title, description);
+        }
+
+        public static TodoItem createTodoItem(String title, String description, TodoPriority priority, LocalDateTime dueDate) {
+            TodoItem item = new TodoItem(title, description);
+            item.setPriority(priority);
+            item.setDueDate(dueDate);
+            return item;
+        }
     }
 
     // Pre-update callback to update the updatedAt timestamp
